@@ -5,6 +5,7 @@ from tkinter import ttk
 from tkinter import messagebox
 from tkinter import filedialog
 from fft import FFT
+from mlmodel import Model
 
 
 class AdaptiveTraining:
@@ -18,10 +19,16 @@ class AdaptiveTraining:
         self.lowfreq=ttk.Entry()
         self.samprate=ttk.Entry()
         self.time_win=ttk.Entry()
-        self.flag=False
+        self.cv=ttk.Entry()
+        self.fftflag=False
+        self.preflag=False
         self.tfdata=[]
         self.features=[]
         self.method=[]
+        self.labesl=[]
+        self.classes_new=[]
+
+        self.final_df= pd.DataFrame()
 
         self.frame_header = ttk.Frame(root)
         self.frame_header.grid(row=2,sticky ='sw')
@@ -33,11 +40,12 @@ class AdaptiveTraining:
 
 
         root.title('Adaptive Application')
-        root.geometry("1000x800")
+        root.geometry("500x400")
 
 
         ttk.Button(self.frame_content, text='Upload File', command=self.UploadAction).grid(row=1, column=0, ipadx=5, ipady=5,sticky = 'sw')
         ttk.Button(self.frame_content, text='Preprocess', command=self.preprocess).grid(row=3, column=0, ipadx=5, ipady=5,sticky = 'sw')
+        ttk.Button(self.frame_content, text='Apply ML models', command=self.MLModel).grid(row=6, column=0, ipadx=5, ipady=5,sticky = 'sw')
 
     def UploadAction(self,event=None):
         self.filename = filedialog.askopenfilename()
@@ -46,8 +54,9 @@ class AdaptiveTraining:
 
 
     def preprocess(self):
+        self.preflag=True
         subwin=Toplevel()
-        subwin.geometry("500x200")
+        subwin.geometry("400x200")
 
         self.lay.append(subwin)
         subwin.title("Preprocessing")
@@ -56,12 +65,13 @@ class AdaptiveTraining:
         ttk.Button(subwin, text='Find average', command=lambda:self.timewindow("avg")).grid(row=2, column=0, ipadx=4, ipady=5,sticky = 'e')
         ttk.Button(subwin, text='Find kurtosis', command=lambda:self.timewindow("kurtosis")).grid(row=3, column=0, ipadx=4, ipady=5,sticky = 'e')
         ttk.Button(subwin, text='Find skewness', command=lambda:self.timewindow("skewness")).grid(row=4, column=0, ipadx=4, ipady=5,sticky = 'e')
+        ttk.Button(subwin, text='Done', command=lambda:subwin.destroy()).grid(row=5, column=2, ipadx=4, ipady=5,sticky = 'e')
 
 
 
     def FFT(self):
         fft=Toplevel()
-        fft.geometry("500x200")
+        fft.geometry("400x200")
 
         self.lay.append(fft)
         fft.title("Fast Fourier Transform Specifications")
@@ -82,17 +92,17 @@ class AdaptiveTraining:
 
 
     def getfftparams(self):
-        self.flag=True
+        self.fftflag=True
         lowerf=(self.lowfreq.get())
         upperf=(self.highfreq.get())
         self.sr=(self.samprate.get())
         data=FFT(self.filename,lowerf,upperf,self.sr)
-        self.tfdata=data.gettfdata()
+        self.tfdata,self.classes=data.gettfdata()
 
 
     def timewindow(self,method):
         time=Toplevel()
-        time.geometry("500x200")
+        time.geometry("400x200")
 
         ttk.Label(time, text = 'Enter time window in seconds').grid(row = 0, column = 0, padx = 5, sticky = 'sw')
         ttk.Label(time, text = 'secs').grid(row = 0, column = 2, padx = 5, sticky = 'sw')
@@ -104,7 +114,7 @@ class AdaptiveTraining:
         ttk.Button(time,text="Done",command=lambda: self.gettimeparams(method)).grid(row = 1, column = 0, padx = 5, sticky = 'sw')
 
 
-        btn=Button(time,text="Save",command=lambda:[time.destroy(),messagebox.showinfo(title = 'Saved', message = 'Time Window Saved')])
+        btn=Button(time,text="Save",command=lambda:[time.destroy()])
         btn.grid(row = 1, column = 1, padx = 5, sticky = 'sw')
 
     def gettimeparams(self,method ):
@@ -112,44 +122,87 @@ class AdaptiveTraining:
         entries= int(int(self.sr) * float(time_window))
         k=0
         process=Preprocess()
-        if self.flag== True:
+        if self.fftflag== True:
             l=len(self.tfdata)
             n=len(self.tfdata[0])
             m=len(self.tfdata[0][0])
-            #meth=method.header
             for i in range(l):
                 for j in range (n):
+                    k=0
+                    self.classes_new = []
                     while k<m/entries:
-                        #self.features.append(process.meth(self.tfdata[i][j][k*entries:(k+1)*entries]))
-                        self.features.append(getattr(process, method)(self.tfdata[i][j][k*entries:(k+1)*entries]))
-                        k+=1
+                        if (all(x==self.classes[k*entries] for x in self.classes[k*entries:(k+1)*entries])):
+                            self.features.append(getattr(process, method)(self.tfdata[i][j][k*entries:(k+1)*entries]))
+                            self.classes_new.append(self.classes[k*entries])
+                            k+=1
+                        elif (all(x == self.classes[k * entries] for x in
+                                  self.classes[k * entries:(k + 1) * entries]) == False):
+                            k += 1
+
+                    self.final_df[method+"_fft_{}_{}".format(i,j)]=self.features
+                    self.features = []
+
 
         else:
             df = pd.read_csv(self.filename)
             [m, n] = df.shape
             df = pd.DataFrame(df.values, columns=range(n))
+            self.classes= df[n-1]
+            df=df.drop(labels=n-1, axis=1)
+            [m, n] = df.shape
             for i in range(n):
                 k=0
+                self.classes_new=[]
                 while k<m/entries:
-                    self.features.append(getattr(process, method)(df[i].iloc[k*entries:(k+1)*entries]))
-                    k+=1
+                    if (all(x == self.classes[k * entries] for x in self.classes[k * entries:(k + 1) * entries])):
+                        self.features.append(getattr(process, method)(df[i].iloc[k*entries:(k+1)*entries]))
+                        self.classes_new.append(self.classes[k * entries])
+                        k+=1
+                    elif(all(x == self.classes[k * entries] for x in self.classes[k * entries:(k + 1) * entries])==False):k+=1
+                self.final_df[method+"_{}".format(i)]=self.features
+                self.features=[]
+        self.classes = self.classes_new
+        print(self.final_df)
+        print((self.classes))
         #messagebox.showinfo(title = 'Final time window', message = 'Time window is {}'.format(time_window))
 
+    def MLModel(self):
+        model=Toplevel()
+        model.geometry("400x200")
+
+        model.title("Machine Learning Model")
+        ttk.Label(model, text = 'Enter number of folds for cross validation').grid(row = 0, column = 0, padx = 5, sticky = 'sw')
+        self.cv= ttk.Entry(model, width=14, font=('Arial', 10))
+        self.cv.grid(row = 0, column = 1, padx = 5)
+        ttk.Button(model, text="K Nearest Neighbors", command=lambda:[self.apply_model("KNN")]).grid(row = 1, column = 0, padx = 5, sticky = 'sw')
+        ttk.Button(model, text="Decision Tree", command=lambda:[self.apply_model("DecisionTree")]).grid(row = 2, column = 0, padx = 5, sticky = 'sw')
+        ttk.Button(model, text="Logistic Regression", command=lambda:[self.apply_model("LR")]).grid(row = 3, column = 0, padx = 5, sticky = 'sw')
+        ttk.Button(model, text="Random Forest", command=lambda:[self.apply_model("RF")]).grid(row = 4, column = 0, padx = 5, sticky = 'sw')
+        ttk.Button(model, text="Support Vector Machine", command=lambda:[self.apply_model("SVM")]).grid(row = 5, column = 0, padx = 5, sticky = 'sw')
 
 
+    def apply_model(self,model):
+        model_obj=Model()
+        if (self.preflag == True):
+            df=self.final_df
+            classes=self.classes
+        elif(self.preflag == False):
+            df = pd.read_csv(self.filename)
+            [m, n] = df.shape
+            df = pd.DataFrame(df.values, columns=range(n))
+            classes= df[n-1]
+            df=df.drop(labels=n-1, axis=1)
+        cross_val=self.cv.get()
+        m,s=getattr(model_obj, model)(df,classes,cross_val)
+        print('Accuracy of {}:'.format(model))
+        print('%.3f%% (+/-%.3f)' % (m, s))
 
 
 def main():
     root=Tk()
     app=AdaptiveTraining(root)
     root.mainloop()
-'''    filename=input("Enter the path to data--")
-    pp=input("For preprocessing enter 1 and For no preprocessing enter 2--")
-    print("The path ot file is {}".format(filename))
-    df=pd.read_csv(filename)
 
-    if (pp==1):
-        return'''
 
 
 if __name__=="__main__": main()

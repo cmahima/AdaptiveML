@@ -16,6 +16,10 @@ class FFT:
         df = pd.read_csv(self.filename)
         [m, n] = df.shape
         df = pd.DataFrame(df.values, columns=range(n))
+        classes=df[n-1]
+        df=df.drop(labels=n-1, axis=1)
+        [m, n] = df.shape
+
         num_frex = 2
         frex = np.linspace(self.min_freq, self.max_freq, num_frex)
         time1 = np.arange(-1.5, 1.5, 1 / self.srate)
@@ -41,8 +45,7 @@ class FFT:
                 mag = np.absolute(as1) ** 2
                 tf[cyclei, i, :] = np.absolute(as1) ** 2
 
-        return tf
-        print(tf)
+        return tf,classes
 
 def main():
     transform=FFT(minfreq=2, maxfreq=50,sr=256)
