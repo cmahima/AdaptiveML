@@ -8,6 +8,10 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from numpy import mean
 from numpy import std
+from sklearn.model_selection import GridSearchCV
+import numpy as np
+from sklearn import svm
+
 
 
 
@@ -22,32 +26,48 @@ class Model():
 
 
     def KNN(self,datax,datay,folds):
-        neigh = KNeighborsClassifier(n_neighbors=6)
+        neigh = KNeighborsClassifier()
+        params = {
+            'n_neighbors': [5,6,7,8],
+            'weights': ['uniform', 'distance'],
+            'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']
+        }
+        grid_kn = GridSearchCV(estimator=neigh,
+                               param_grid=params,
+                               scoring='accuracy',
+                               cv=5,
+                               verbose=1,
+                               n_jobs=-1)
         folds=int(folds)
         cv = ShuffleSplit(n_splits=folds, random_state=0)
-        scores = cross_val_score(neigh, datax, datay, cv=cv, scoring='accuracy')
+        print(grid_kn)
+        scores = cross_val_score(grid_kn, datax, datay, cv=cv, scoring='accuracy')
         return self.summarize_results(scores)
 
     def DecisionTree(self,datax,datay,folds):
-        dt = DecisionTreeClassifier()
+        params = {'max_leaf_nodes': list(range(2, 100)), 'min_samples_split': [2, 3, 4]}
+        grid_search_cv = GridSearchCV(DecisionTreeClassifier(random_state=42), params, verbose=1, cv=3)
         folds=int(folds)
         cv = ShuffleSplit(n_splits=folds, random_state=0)
-        scores = cross_val_score(dt, datax, datay, cv=cv,scoring='accuracy')
+        scores = cross_val_score(grid_search_cv, datax, datay, cv=cv,scoring='accuracy')
         return self.summarize_results(scores)
 
     def LR(self,datax,datay,folds):
-        logreg = LogisticRegression(C=10, penalty='l2')
+        param_grid = {'penalty': ['l1', 'l2'],'C': np.logspace(-4, 4, 20),'solver': ['liblinear']}
+        grid_search_cv = GridSearchCV(LogisticRegression(), param_grid, verbose=1, cv=3)
         folds=int(folds)
         cv = ShuffleSplit(n_splits=folds, random_state=0)
-        scores = cross_val_score(logreg, datax, datay, cv=cv, scoring='accuracy')
+        scores = cross_val_score(grid_search_cv, datax, datay, cv=cv, scoring='accuracy')
         return self.summarize_results(scores)
 
 
     def SVM(self,datax,datay,folds):
-        svclassifier = SVC(kernel='linear')
+        parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 10]}
+        svc = svm.SVC()
         folds=int(folds)
+        clf = GridSearchCV(svc, parameters)
         cv = ShuffleSplit(n_splits=folds, random_state=0)
-        scores = cross_val_score(svclassifier, datax, datay, cv=cv, scoring='accuracy')
+        scores = cross_val_score(clf, datax, datay, cv=cv, scoring='accuracy')
         return self.summarize_results(scores)
 
     def MLP(self,datax,datay,folds):
@@ -59,7 +79,12 @@ class Model():
         return self.summarize_results(scores)
 
     def RF(self,datax,datay,folds):
-        clf = RandomForestClassifier(n_estimators=100)
+        model_params = {
+            'n_estimators': [50, 150, 250],
+            'min_samples_split': [2, 4, 6]
+        }
+        rf_model = RandomForestClassifier(random_state=1)
+        clf = GridSearchCV(rf_model, model_params, cv=3)
         folds=int(folds)
         cv = ShuffleSplit(n_splits=folds, random_state=0)
         scores = cross_val_score(clf, datax, datay, cv=cv, scoring='accuracy')
